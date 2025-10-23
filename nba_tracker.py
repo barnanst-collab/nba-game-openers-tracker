@@ -41,7 +41,7 @@ except Exception as e:
     target_game_ids = games['GAME_ID'].unique()
     print("Using fallback game list:", target_game_ids.tolist())
 
-if not target_game_ids:
+if len(target_game_ids) == 0:  # Fixed: Use len() to check for empty array
     print("No new games found.")
     exit()
 
