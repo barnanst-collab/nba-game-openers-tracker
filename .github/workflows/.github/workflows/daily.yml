@@ -1,0 +1,28 @@
+name: Daily NBA Update
+
+on:
+  schedule:
+    - cron: '0 14 * * *'  # Every day at 9:00 AM EST (14:00 UTC)
+  workflow_dispatch:      # Allow manual run
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Save credentials
+        run: echo "$GOOGLE_CREDENTIALS" > credentials.json
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Run tracker
+        run: python nba_tracker.py
