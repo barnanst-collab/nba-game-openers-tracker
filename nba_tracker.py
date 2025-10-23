@@ -18,23 +18,28 @@ try:
     gamefinder = leaguegamefinder.LeagueGameFinder(
         season_nullable='2024-25',
         season_type_nullable='Regular Season',
-        timeout=120  # Increased timeout
+        timeout=120
     )
     games = gamefinder.get_data_frames()[0]
     games['GAME_DATE'] = pd.to_datetime(games['GAME_DATE']).dt.strftime('%Y-%m-%d')
     two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
     target_game_ids = games[games['GAME_DATE'] >= two_days_ago]['GAME_ID'].unique()
+    print(f"Found {len(target_game_ids)} games: {target_game_ids.tolist()}")
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    # Fallback: Hardcode games from Oct 22-23, 2025
-    games = pd.DataFrame({
-        'GAME_ID': ['0022401191', '0022401192', '0022401193', '0022401194'],
-        'GAME_DATE': ['2024-10-22', '2024-10-22', '2024-10-23', '2024-10-23'],
-        'TEAM_NAME': ['New York Knicks', 'Cleveland Cavaliers', 'San Antonio Spurs', 'Dallas Mavericks', 'Oklahoma City Thunder', 'Indiana Pacers', 'Denver Nuggets', 'Golden State Warriors'],
-        'MATCHUP': ['NYK vs. CLE', 'CLE @ NYK', 'SAS vs. DAL', 'DAL @ SAS', 'OKC @ IND', 'IND vs. OKC', 'DEN vs. GSW', 'GSW @ DEN']
-    })
+    # Fallback: Hardcoded games (Oct 22-23, 2025, 4 games)
+    games = pd.DataFrame([
+        {'GAME_ID': '0022401191', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'New York Knicks', 'MATCHUP': 'NYK vs. CLE'},
+        {'GAME_ID': '0022401191', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'Cleveland Cavaliers', 'MATCHUP': 'CLE @ NYK'},
+        {'GAME_ID': '0022401192', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'San Antonio Spurs', 'MATCHUP': 'SAS vs. DAL'},
+        {'GAME_ID': '0022401192', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'Dallas Mavericks', 'MATCHUP': 'DAL @ SAS'},
+        {'GAME_ID': '0022401193', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Oklahoma City Thunder', 'MATCHUP': 'OKC @ IND'},
+        {'GAME_ID': '0022401193', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Indiana Pacers', 'MATCHUP': 'IND vs. OKC'},
+        {'GAME_ID': '0022401194', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Denver Nuggets', 'MATCHUP': 'DEN vs. GSW'},
+        {'GAME_ID': '0022401194', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Golden State Warriors', 'MATCHUP': 'GSW @ DEN'}
+    ])
     target_game_ids = games['GAME_ID'].unique()
-    print("Using fallback game list:", target_game_ids)
+    print("Using fallback game list:", target_game_ids.tolist())
 
 if not target_game_ids:
     print("No new games found.")
@@ -44,7 +49,7 @@ if not target_game_ids:
 tracker_data = []
 for game_id in target_game_ids:
     print(f"Processing {game_id}...")
-    for attempt in range(5):  # Retry up to 5 times
+    for attempt in range(5):
         try:
             pbp = playbyplay.PlayByPlay(game_id, timeout=120).get_data_frames()[0]
             if pbp.empty:
@@ -116,7 +121,7 @@ for game_id in target_game_ids:
         except ReadTimeout as e:
             print(f"  Attempt {attempt+1}/5 failed for {game_id}: {e}")
             if attempt < 4:
-                time.sleep(2 ** attempt)  # Exponential backoff: 2, 4, 8, 16 seconds
+                time.sleep(2 ** attempt)
             else:
                 print(f"  Skipped {game_id} after 5 attempts")
         except Exception as e:
