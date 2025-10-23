@@ -6,26 +6,35 @@ from nba_api.stats.endpoints import leaguegamefinder, playbyplay
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 from requests.exceptions import ReadTimeout
+from datetime import datetime, timedelta
 
 # === CONFIG ===
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
-# === FETCH GAMES (LAST 24 HOURS) ===
-print("Fetching games from last 24 hours...")
+# === FETCH GAMES (LAST 2 DAYS) ===
+print("Fetching games from last 2 days...")
 try:
     gamefinder = leaguegamefinder.LeagueGameFinder(
         season_nullable='2024-25',
         season_type_nullable='Regular Season',
-        timeout=60  # Increased timeout
+        timeout=120  # Increased timeout
     )
     games = gamefinder.get_data_frames()[0]
     games['GAME_DATE'] = pd.to_datetime(games['GAME_DATE']).dt.strftime('%Y-%m-%d')
-    yesterday = (pd.Timestamp.now() - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-    target_game_ids = games[games['GAME_DATE'] >= yesterday]['GAME_ID'].unique()
+    two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+    target_game_ids = games[games['GAME_DATE'] >= two_days_ago]['GAME_ID'].unique()
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    target_game_ids = []
+    # Fallback: Hardcode games from Oct 22-23, 2025
+    games = pd.DataFrame({
+        'GAME_ID': ['0022401191', '0022401192', '0022401193', '0022401194'],
+        'GAME_DATE': ['2024-10-22', '2024-10-22', '2024-10-23', '2024-10-23'],
+        'TEAM_NAME': ['New York Knicks', 'Cleveland Cavaliers', 'San Antonio Spurs', 'Dallas Mavericks', 'Oklahoma City Thunder', 'Indiana Pacers', 'Denver Nuggets', 'Golden State Warriors'],
+        'MATCHUP': ['NYK vs. CLE', 'CLE @ NYK', 'SAS vs. DAL', 'DAL @ SAS', 'OKC @ IND', 'IND vs. OKC', 'DEN vs. GSW', 'GSW @ DEN']
+    })
+    target_game_ids = games['GAME_ID'].unique()
+    print("Using fallback game list:", target_game_ids)
 
 if not target_game_ids:
     print("No new games found.")
@@ -35,9 +44,9 @@ if not target_game_ids:
 tracker_data = []
 for game_id in target_game_ids:
     print(f"Processing {game_id}...")
-    for attempt in range(3):  # Retry up to 3 times
+    for attempt in range(5):  # Retry up to 5 times
         try:
-            pbp = playbyplay.PlayByPlay(game_id, timeout=60).get_data_frames()[0]
+            pbp = playbyplay.PlayByPlay(game_id, timeout=120).get_data_frames()[0]
             if pbp.empty:
                 print(f"  No data for {game_id}")
                 break
@@ -62,6 +71,7 @@ for game_id in target_game_ids:
                 m = re.search(r'Jump Ball (\w+\.?\s*\w*) vs\. (\w+\.?\s*\w*)', desc)
                 if m:
                     tip_winner, tip_loser = m.groups()
+                print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
 
             # Shots
             fg = period1[period1['EVENTMSGTYPE'].isin([1, 3])].reset_index(drop=True)
@@ -82,6 +92,9 @@ for game_id in target_game_ids:
 
             first_shooter, first_made, first_type, first_team = get_shot(0)
             second_shooter, second_made, second_type, _ = get_shot(1)
+            print(f"  First Shot: {first_shooter} → {first_type} ({'Made' if first_made else 'Missed'})")
+            if len(fg) > 1:
+                print(f"  Second Shot: {second_shooter} → {second_type} ({'Made' if second_made else 'Missed'})")
 
             tracker_data.append({
                 'Game_ID': game_id,
@@ -101,11 +114,11 @@ for game_id in target_game_ids:
             print(f"  Success: {game_id}")
             break
         except ReadTimeout as e:
-            print(f"  Attempt {attempt+1}/3 failed for {game_id}: {e}")
-            if attempt < 2:
-                time.sleep(5)  # Wait before retry
+            print(f"  Attempt {attempt+1}/5 failed for {game_id}: {e}")
+            if attempt < 4:
+                time.sleep(2 ** attempt)  # Exponential backoff: 2, 4, 8, 16 seconds
             else:
-                print(f"  Skipped {game_id} after 3 attempts")
+                print(f"  Skipped {game_id} after 5 attempts")
         except Exception as e:
             print(f"  Error on {game_id}: {e}")
             break
