@@ -41,7 +41,7 @@ except Exception as e:
     target_game_ids = games['GAME_ID'].unique()
     print("Using fallback game list:", target_game_ids.tolist())
 
-if len(target_game_ids) == 0:  # Fixed: Use len() to check for empty array
+if len(target_game_ids) == 0:
     print("No new games found.")
     exit()
 
@@ -101,29 +101,36 @@ for game_id in target_game_ids:
             if len(fg) > 1:
                 print(f"  Second Shot: {second_shooter} → {second_type} ({'Made' if second_made else 'Missed'})")
 
-            tracker_data.append({
-                'Game_ID': game_id,
-                'Date': game_date,
-                'Home_Team': home_team,
-                'Away_Team': away_team,
-                'Tip_Winner': tip_winner,
-                'Tip_Loser': tip_loser,
-                'First_Shot_Shooter': first_shooter,
-                'First_Shot_Made': first_made,
-                'First_Shot_Type': first_type,
-                'First_Shot_Team': first_team,
-                'Second_Shot_Shooter': second_shooter,
-                'Second_Shot_Made': second_made,
-                'Second_Shot_Type': second_type
-            })
-            print(f"  Success: {game_id}")
-            break
         except ReadTimeout as e:
             print(f"  Attempt {attempt+1}/5 failed for {game_id}: {e}")
             if attempt < 4:
                 time.sleep(2 ** attempt)
             else:
                 print(f"  Skipped {game_id} after 5 attempts")
+                # Fallback: Add placeholder data
+                game_rows = games[games['GAME_ID'] == game_id]
+                home = game_rows[game_rows['MATCHUP'].str.contains(' vs. ')]['TEAM_NAME']
+                away = game_rows[game_rows['MATCHUP'].str.contains(' @ ')]['TEAM_NAME']
+                home_team = home.iloc[0] if not home.empty else 'Unknown'
+                away_team = away.iloc[0] if not away.empty else 'Unknown'
+                game_date = game_rows['GAME_DATE'].iloc[0]
+                tracker_data.append({
+                    'Game_ID': game_id,
+                    'Date': game_date,
+                    'Home_Team': home_team,
+                    'Away_Team': away_team,
+                    'Tip_Winner': 'Unknown (API Timeout)',
+                    'Tip_Loser': 'Unknown',
+                    'First_Shot_Shooter': 'Unknown',
+                    'First_Shot_Made': False,
+                    'First_Shot_Type': 'Other',
+                    'First_Shot_Team': home_team,
+                    'Second_Shot_Shooter': 'Unknown',
+                    'Second_Shot_Made': False,
+                    'Second_Shot_Type': 'Other'
+                })
+                print(f"  Added placeholder data for {game_id}")
+            break
         except Exception as e:
             print(f"  Error on {game_id}: {e}")
             break
