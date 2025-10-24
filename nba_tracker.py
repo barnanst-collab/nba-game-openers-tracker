@@ -73,4 +73,14 @@ for game_id in target_game_ids:
             jump = period1[period1['EVENTMSGTYPE'] == 10].head(1)
             tip_winner = tip_loser = 'No Tip'
             if not jump.empty:
-                desc = jump.iloc[0].get('HOMEDESCRIPTION', '') or jump.iloc[0].get('VISIT
+                desc = jump.iloc[0].get('HOMEDESCRIPTION', '') or jump.iloc[0].get('VISITORDESCRIPTION', '')
+                m = re.search(r'Jump Ball (\w+\.?\s*\w*) vs\. (\w+\.?\s*\w*)', desc)
+                if m:
+                    tip_winner, tip_loser = m.groups()
+                print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
+
+            # Shots
+            fg = period1[period1['EVENTMSGTYPE'].isin([1, 3])].reset_index(drop=True)
+            def get_shot(idx):
+                if len(fg) <= idx:
+                    return 'No Shot', False
