@@ -58,4 +58,35 @@ for game_id in target_game_ids:
                 break
             period1 = pbp[pbp['PERIOD'] == 1]
             if len(period1) == 0:
-                print(f"  No Period 1 for {game
+                print(f"  No Period 1 for {game_id}")
+                break
+
+            # Game Info
+            game_rows = games[games['GAME_ID'] == game_id]
+            home = game_rows[game_rows['MATCHUP'].str.contains(' vs. ')]['TEAM_NAME']
+            away = game_rows[game_rows['MATCHUP'].str.contains(' @ ')]['TEAM_NAME']
+            home_team = home.iloc[0] if not home.empty else 'Unknown'
+            away_team = away.iloc[0] if not away.empty else 'Unknown'
+            game_date = game_rows['GAME_DATE'].iloc[0]
+
+            # Tip
+            jump = period1[period1['EVENTMSGTYPE'] == 10].head(1)
+            tip_winner = tip_loser = 'No Tip'
+            if not jump.empty:
+                desc = jump.iloc[0].get('HOMEDESCRIPTION', '') or jump.iloc[0].get('VISITORDESCRIPTION', '')
+                m = re.search(r'Jump Ball (\w+\.?\s*\w*) vs\. (\w+\.?\s*\w*)', desc)
+                if m:
+                    tip_winner, tip_loser = m.groups()
+                print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
+
+            # Shots
+            fg = period1[period1['EVENTMSGTYPE'].isin([1, 3])].reset_index(drop=True)
+            def get_shot(idx):
+                if len(fg) <= idx:
+                    return 'No Shot', None, 'Other', 'Unknown'
+                shot = fg.iloc[idx]
+                desc = shot.get('HOMEDESCRIPTION', '') or shot.get('VISITORDESCRIPTION', '')
+                m = re.search(r'^(\w+\.?\s*\w*?)(?=\s)', desc)
+                shooter = m.group(1).strip() if m else 'Unknown'
+                made = shot['EVENTMSGTYPE'] == 1
+                typ
