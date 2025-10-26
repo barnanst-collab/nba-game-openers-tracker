@@ -1,44 +1,41 @@
-# nba_tracker.py
+# nba_tracker.py (BallDontLie Version)
 import pandas as pd
 import time
 import re
-from nba_api.stats.endpoints import leaguegamefinder, playbyplay
+import requests
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
-from requests.exceptions import ReadTimeout
-from datetime import datetime, timedelta
 
 # === CONFIG ===
+BALLDONTLIE_URL = 'https://www.balldontlie.io/api/v1'
+API_KEY = 9d36588f-9403-4d3e-8654-8357d10537d7  # Optional for free tier
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
 # === FETCH GAMES (LAST 2 DAYS) ===
 print("Fetching games from last 2 days...")
 try:
-    gamefinder = leaguegamefinder.LeagueGameFinder(
-        season_nullable='2024-25',
-        season_type_nullable='Regular Season',
-        timeout=180
-    )
-    games = gamefinder.get_data_frames()[0]
-    games['GAME_DATE'] = pd.to_datetime(games['GAME_DATE']).dt.strftime('%Y-%m-%d')
-    two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
-    target_game_ids = games[games['GAME_DATE'] >= two_days_ago]['GAME_ID'].unique()
+    two_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=2)).strftime('%Y-%m-%d')
+    response = requests.get(f'{BALLDONTLIE_URL}/games?dates[]={two_days_ago}', headers={'Authorization': API_KEY})
+    response.raise_for_status()
+    games_data = response.json()['data']
+    if not games_data:
+        raise ValueError("No games found")
+    games = pd.DataFrame(games_data)
+    games['GAME_DATE'] = pd.to_datetime(games['date']).dt.strftime('%Y-%m-%d')
+    target_game_ids = games['id'].unique()[:10]  # Test 10 games
     print(f"Found {len(target_game_ids)} games: {target_game_ids.tolist()}")
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    # Fallback: Hardcoded games (Oct 22-23, 2025, 4 games)
+    # Fallback: Hardcoded games
     games = pd.DataFrame([
-        {'GAME_ID': '0022401191', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'New York Knicks', 'MATCHUP': 'NYK vs. CLE'},
-        {'GAME_ID': '0022401191', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'Cleveland Cavaliers', 'MATCHUP': 'CLE @ NYK'},
-        {'GAME_ID': '0022401192', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'San Antonio Spurs', 'MATCHUP': 'SAS vs. DAL'},
-        {'GAME_ID': '0022401192', 'GAME_DATE': '2024-10-22', 'TEAM_NAME': 'Dallas Mavericks', 'MATCHUP': 'DAL @ SAS'},
-        {'GAME_ID': '0022401193', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Oklahoma City Thunder', 'MATCHUP': 'OKC @ IND'},
-        {'GAME_ID': '0022401193', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Indiana Pacers', 'MATCHUP': 'IND vs. OKC'},
-        {'GAME_ID': '0022401194', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Denver Nuggets', 'MATCHUP': 'DEN vs. GSW'},
-        {'GAME_ID': '0022401194', 'GAME_DATE': '2024-10-23', 'TEAM_NAME': 'Golden State Warriors', 'MATCHUP': 'GSW @ DEN'}
+        {'id': 123456, 'date': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers'},
+        {'id': 123457, 'date': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks'},
+        {'id': 123458, 'date': '2024-10-23', 'home_team': 'Indiana Pacers', 'visitor_team': 'Oklahoma City Thunder'},
+        {'id': 123459, 'date': '2024-10-23', 'home_team': 'Denver Nuggets', 'visitor_team': 'Golden State Warriors'}
     ])
-    target_game_ids = games['GAME_ID'].unique()
+    games['GAME_DATE'] = pd.to_datetime(games['date']).dt.strftime('%Y-%m-%d')
+    target_game_ids = games['id'].unique()
     print("Using fallback game list:", target_game_ids.tolist())
 
 if len(target_game_ids) == 0:
@@ -49,136 +46,86 @@ if len(target_game_ids) == 0:
 tracker_data = []
 for game_id in target_game_ids:
     print(f"Processing {game_id}...")
-    success = False
-    for attempt in range(5):
-        try:
-            pbp = playbyplay.PlayByPlay(game_id, timeout=180).get_data_frames()[0]
-            if pbp.empty:
-                print(f"  No data for {game_id}")
-                break
-            period1 = pbp[pbp['PERIOD'] == 1]
-            if len(period1) == 0:
-                print(f"  No Period 1 for {game_id}")
-                break
+    try:
+        # Fetch PBP
+        response = requests.get(f'{BALLDONTLIE_URL}/plays?game_ids[]={game_id}', headers={'Authorization': API_KEY})
+        response.raise_for_status()
+        plays_data = response.json()['data']
+        plays = pd.DataFrame(plays_data)
+        # Filter to period 1
+        period1 = plays[plays['period'] == 1]
 
-            # Game Info
-            game_rows = games[games['GAME_ID'] == game_id]
-            home = game_rows[game_rows['MATCHUP'].str.contains(' vs. ')]['TEAM_NAME']
-            away = game_rows[game_rows['MATCHUP'].str.contains(' @ ')]['TEAM_NAME']
-            home_team = home.iloc[0] if not home.empty else 'Unknown'
-            away_team = away.iloc[0] if not away.empty else 'Unknown'
-            game_date = game_rows['GAME_DATE'].iloc[0]
+        # Game Info
+        game_row = games[games['id'] == game_id].iloc[0]
+        home_team = game_row['home_team']
+        away_team = game_row['visitor_team']
+        game_date = game_row['GAME_DATE']
 
-            # Tip
-            jump = period1[period1['EVENTMSGTYPE'] == 10].head(1)
-            tip_winner = tip_loser = 'No Tip'
-            if not jump.empty:
-                desc = jump.iloc[0].get('HOMEDESCRIPTION', '') or jump.iloc[0].get('VISITORDESCRIPTION', '')
-                m = re.search(r'Jump Ball (\w+\.?\s*\w*) vs\. (\w+\.?\s*\w*)', desc)
-                if m:
-                    tip_winner, tip_loser = m.groups()
-                print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
+        # Tip (first play with 'jump_ball' or similar)
+        jump = period1[period1['type'].str.contains('jump|tip', case=False, na=False)].head(1)
+        tip_winner = tip_loser = 'No Tip'
+        if not jump.empty:
+            tip_winner = jump['player'].iloc[0]  # Simplified
+            tip_loser = 'Unknown'  # Parse from description if needed
+            print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
 
-            # Shots
-            fg = period1[period1['EVENTMSGTYPE'].isin([1, 3])].reset_index(drop=True)
-            def get_shot(idx):
-                if len(fg) <= idx:
-                    return 'No Shot', False, 'Other', 'Unknown'
-                shot = fg.iloc[idx]
-                desc = shot.get('HOMEDESCRIPTION', '') or shot.get('VISITORDESCRIPTION', '')
-                m = re.search(r'^(\w+\.?\s*\w*?)(?=\s)', desc)
-                shooter = m.group(1).strip() if m else 'Unknown'
-                made = shot['EVENTMSGTYPE'] == 1
-                shot_type = 'Dunk' if 'dunk' in desc.lower() else \
-                            'Layup' if 'layup' in desc.lower() else \
-                            'Free Throw' if 'free throw' in desc.lower() else \
-                            '3pt' if '3pt' in desc.lower() else 'Other'
-                team = home_team if 'HOMEDESCRIPTION' in shot and pd.notna(shot['HOMEDESCRIPTION']) else away_team
-                return shooter, made, shot_type, team
+        # Shots (filter to 'shot' events)
+        shots = period1[period1['type'].str.contains('shot', case=False, na=False)]
+        first_shot = shots.head(1)
+        second_shot = shots.head(2).iloc[1] if len(shots) > 1 else pd.DataFrame()
 
-            first_shooter, first_made, first_type, first_team = get_shot(0)
-            second_shooter, second_made, second_type, _ = get_shot(1)
-            print(f"  First Shot: {first_shooter} → {first_type} ({'Made' if first_made else 'Missed'})")
-            if len(fg) > 1:
-                print(f"  Second Shot: {second_shooter} → {second_type} ({'Made' if second_made else 'Missed'})")
+        # First Shot
+        if not first_shot.empty:
+            first_shooter = first_shot['player'].iloc[0]
+            first_made = first_shot['made'].iloc[0] if 'made' in first_shot.columns else False
+            first_type = first_shot['type'].iloc[0]  # e.g., '3pt', 'layup'
+            first_team = home_team if first_shot['team_id'].iloc[0] == home_team_id else away_team  # Map IDs if needed
+        else:
+            first_shooter, first_made, first_type, first_team = 'Unknown', False, 'Other', home_team
 
-            tracker_data.append({
-                'Game_ID': game_id,
-                'Date': game_date,
-                'Home_Team': home_team,
-                'Away_Team': away_team,
-                'Tip_Winner': tip_winner,
-                'Tip_Loser': tip_loser,
-                'First_Shot_Shooter': first_shooter,
-                'First_Shot_Made': first_made,
-                'First_Shot_Type': first_type,
-                'First_Shot_Team': first_team,
-                'Second_Shot_Shooter': second_shooter,
-                'Second_Shot_Made': second_made,
-                'Second_Shot_Type': second_type
-            })
-            print(f"  Success: {game_id}")
-            success = True
-            break
-        except ReadTimeout as e:
-            print(f"  Attempt {attempt+1}/5 failed for {game_id}: {e}")
-            if attempt < 4:
-                time.sleep(2 ** attempt)
-                continue
-            else:
-                print(f"  Skipped {game_id} after 5 attempts")
-                # Add placeholder data
-                game_rows = games[games['GAME_ID'] == game_id]
-                home = game_rows[game_rows['MATCHUP'].str.contains(' vs. ')]['TEAM_NAME']
-                away = game_rows[game_rows['MATCHUP'].str.contains(' @ ')]['TEAM_NAME']
-                home_team = home.iloc[0] if not home.empty else 'Unknown'
-                away_team = away.iloc[0] if not away.empty else 'Unknown'
-                game_date = game_rows['GAME_DATE'].iloc[0]
-                tracker_data.append({
-                    'Game_ID': game_id,
-                    'Date': game_date,
-                    'Home_Team': home_team,
-                    'Away_Team': away_team,
-                    'Tip_Winner': 'Unknown (API Timeout)',
-                    'Tip_Loser': 'Unknown',
-                    'First_Shot_Shooter': 'Unknown',
-                    'First_Shot_Made': False,
-                    'First_Shot_Type': 'Other',
-                    'First_Shot_Team': home_team,
-                    'Second_Shot_Shooter': 'Unknown',
-                    'Second_Shot_Made': False,
-                    'Second_Shot_Type': 'Other'
-                })
-                print(f"  Added placeholder data for {game_id}")
-                success = True
-        except Exception as e:
-            print(f"  Error on {game_id}: {e}")
-            break
-    if not success:
-        print(f"  Failed to process {game_id}, added placeholder data")
-        game_rows = games[games['GAME_ID'] == game_id]
-        home = game_rows[game_rows['MATCHUP'].str.contains(' vs. ')]['TEAM_NAME']
-        away = game_rows[game_rows['MATCHUP'].str.contains(' @ ')]['TEAM_NAME']
-        home_team = home.iloc[0] if not home.empty else 'Unknown'
-        away_team = away.iloc[0] if not away.empty else 'Unknown'
-        game_date = game_rows['GAME_DATE'].iloc[0]
+        # Second Shot
+        if not second_shot.empty:
+            second_shooter = second_shot['player'].iloc[0]
+            second_made = second_shot['made'].iloc[0] if 'made' in second_shot.columns else False
+            second_type = second_shot['type'].iloc[0]
+        else:
+            second_shooter, second_made, second_type = 'Unknown', False, 'Other'
+
         tracker_data.append({
             'Game_ID': game_id,
             'Date': game_date,
             'Home_Team': home_team,
             'Away_Team': away_team,
-            'Tip_Winner': 'Unknown (API Timeout)',
+            'Tip_Winner': tip_winner,
+            'Tip_Loser': tip_loser,
+            'First_Shot_Shooter': first_shooter,
+            'First_Shot_Made': first_made,
+            'First_Shot_Type': first_type,
+            'First_Shot_Team': first_team,
+            'Second_Shot_Shooter': second_shooter,
+            'Second_Shot_Made': second_made,
+            'Second_Shot_Type': second_type
+        })
+        print(f"  Success: {game_id}")
+    except Exception as e:
+        print(f"  Error on {game_id}: {e}")
+        # Placeholder
+        tracker_data.append({
+            'Game_ID': game_id,
+            'Date': '2024-10-22',
+            'Home_Team': 'Unknown',
+            'Away_Team': 'Unknown',
+            'Tip_Winner': 'Unknown',
             'Tip_Loser': 'Unknown',
             'First_Shot_Shooter': 'Unknown',
             'First_Shot_Made': False,
             'First_Shot_Type': 'Other',
-            'First_Shot_Team': home_team,
+            'First_Shot_Team': 'Unknown',
             'Second_Shot_Shooter': 'Unknown',
             'Second_Shot_Made': False,
             'Second_Shot_Type': 'Other'
         })
-        print(f"  Added placeholder data for {game_id}")
-    time.sleep(1.5)
+    time.sleep(1)  # Rate limit buffer
 
 # === EXPORT TO GOOGLE SHEETS ===
 if tracker_data:
