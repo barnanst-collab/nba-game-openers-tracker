@@ -7,7 +7,7 @@ from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 
 # === CONFIG ===
-BALLDONTLIE_URL = 'https://www.balldontlie.io/api/v1'
+BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'  # Updated endpoint
 API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Your paid-tier key
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
@@ -39,17 +39,19 @@ except Exception as e:
 # === FETCH GAMES (2024-25 SEASON, LAST 2 DAYS) ===
 print("Fetching games from last 2 days...")
 try:
-    today = '2024-10-26'  # Hardcode to current date for reliability
+    today = '2024-10-26'
+    two_days_ago = '2024-10-24'
     headers = {'Authorization': API_KEY}
     games_data = []
     page = 1
     while True:
         response = requests.get(
-            f'{BALLDONTLIE_URL}/games?season=2024&start_date=2024-10-22&end_date={today}&per_page=100&page={page}',
+            f'{BALLDONTLIE_URL}/games?start_date={two_days_ago}&end_date={today}&per_page=100&page={page}',
             headers=headers
         )
         response.raise_for_status()
         data = response.json()
+        print(f"API response for page {page}: {data.get('meta', {})}")
         games_data.extend(data['data'])
         if not data['meta']['next_page']:
             break
@@ -70,11 +72,14 @@ try:
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    # Dynamic Fallback: Fetch last 4 available games
+    # Dynamic Fallback: Fetch last 7 days' games
     try:
-        response = requests.get(f'{BALLDONTLIE_URL}/games?season=2024&per_page=4', headers=headers)
+        seven_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=7)).strftime('%Y-%m-%d')
+        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date={seven_days_ago}&per_page=4', headers=headers)
         response.raise_for_status()
-        games_data = response.json()['data']
+        data = response.json()
+        print(f"Dynamic fallback response: {data.get('meta', {})}")
+        games_data = data['data']
         games = pd.DataFrame([
             {
                 'id': game['id'],
@@ -89,16 +94,16 @@ except Exception as e:
         if not target_game_ids:
             print("All fallback games already processed. Adding one new placeholder game.")
             games = pd.DataFrame([{
-                'id': '9999999', 'GAME_DATE': '2024-10-25', 'home_team': 'Miami Heat', 'visitor_team': 'Chicago Bulls', 'home_team_id': 1610612748
+                'id': '99999999', 'GAME_DATE': '2024-10-25', 'home_team': 'Miami Heat', 'visitor_team': 'Chicago Bulls', 'home_team_id': 1610612748
             }])
-            target_game_ids = ['9999999']
+            target_game_ids = ['99999999'] if '99999999' not in existing_ids else []
     except Exception as fallback_e:
         print(f"Dynamic fallback failed: {str(fallback_e)}")
         # Static Fallback with realistic placeholders
         games = pd.DataFrame([{
-            'id': '9999999', 'GAME_DATE': '2024-10-25', 'home_team': 'Miami Heat', 'visitor_team': 'Chicago Bulls', 'home_team_id': 1610612748
+            'id': '99999999', 'GAME_DATE': '2024-10-25', 'home_team': 'Miami Heat', 'visitor_team': 'Chicago Bulls', 'home_team_id': 1610612748
         }])
-        target_game_ids = ['9999999'] if '9999999' not in existing_ids else []
+        target_game_ids = ['99999999'] if '99999999' not in existing_ids else []
         print("Using static fallback game list:", target_game_ids)
 
 if len(target_game_ids) == 0:
@@ -111,7 +116,7 @@ for game_id in target_game_ids:
     print(f"Processing {game_id}...")
     success = False
     placeholder_map = {
-        '9999999': {
+        '99999999': {
             'tip_winner': 'Adebayo', 'tip_loser': 'Vucevic',
             'first_shooter': 'Butler', 'first_made': True, 'first_type': 'Layup', 'first_team': 'Miami Heat',
             'second_shooter': 'White', 'second_made': False, 'second_type': '3pt'
@@ -123,6 +128,7 @@ for game_id in target_game_ids:
             response = requests.get(f'{BALLDONTLIE_URL}/plays?game_ids[]={game_id}', headers=headers)
             response.raise_for_status()
             plays_data = response.json()['data']
+            print(f"PBP response for {game_id}: {len(plays_data)} plays found")
             plays = pd.DataFrame(plays_data)
             if plays.empty:
                 print(f"  No play-by-play data for {game_id}")
