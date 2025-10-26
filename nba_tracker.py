@@ -41,11 +41,12 @@ print("Fetching games from last 2 days...")
 try:
     two_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=2)).strftime('%Y-%m-%d')
     headers = {'Authorization': API_KEY}
-    response = requests.get(f'{BALLDONTLIE_URL}/games?dates[]={two_days_ago}', headers=headers)
+    # Use season=2024 to ensure games are found
+    response = requests.get(f'{BALLDONTLIE_URL}/games?season=2024&start_date={two_days_ago}', headers=headers)
     response.raise_for_status()
     games_data = response.json()['data']
     if not games_data:
-        raise ValueError("No games found")
+        raise ValueError("No games found for the specified date range")
     games = pd.DataFrame([
         {
             'id': game['id'],
@@ -57,19 +58,18 @@ try:
     ])
     target_game_ids = games['id'].unique()
     target_game_ids = [gid for gid in target_game_ids if str(gid) not in existing_ids][:10]  # Skip duplicates, limit 10
-    print(f"Found {len(target_game_ids)} new games: {target_game_ids.tolist()}")
+    print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    # Fallback: Hardcoded games (Oct 22-23, 2025)
+    # Fallback: Hardcoded games (Oct 22-23, 2024)
     games = pd.DataFrame([
         {'id': '0022401191', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers', 'home_team_id': 1610612752},
         {'id': '0022401192', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks', 'home_team_id': 1610612759},
         {'id': '0022401193', 'GAME_DATE': '2024-10-23', 'home_team': 'Indiana Pacers', 'visitor_team': 'Oklahoma City Thunder', 'home_team_id': 1610612754},
         {'id': '0022401194', 'GAME_DATE': '2024-10-23', 'home_team': 'Denver Nuggets', 'visitor_team': 'Golden State Warriors', 'home_team_id': 1610612743}
     ])
-    target_game_ids = games['id'].unique()
-    target_game_ids = [gid for gid in target_game_ids if str(gid) not in existing_ids]
-    print("Using fallback game list:", target_game_ids.tolist())
+    target_game_ids = [gid for gid in games['id'].unique() if str(gid) not in existing_ids]
+    print("Using fallback game list:", target_game_ids)
 
 if len(target_game_ids) == 0:
     print("No new games found.")
