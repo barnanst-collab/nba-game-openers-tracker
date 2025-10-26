@@ -7,7 +7,7 @@ from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 
 # === CONFIG ===
-BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'  # Updated endpoint
+BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'
 API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Your paid-tier key
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
@@ -36,24 +36,24 @@ except Exception as e:
     print(f"Failed to read existing games: {e}")
     existing_ids = []
 
-# === FETCH GAMES (2024-25 SEASON, LAST 2 DAYS) ===
-print("Fetching games from last 2 days...")
+# === FETCH GAMES (2024-25 SEASON, LAST 7 DAYS) ===
+print("Fetching games from last 7 days...")
 try:
     today = '2024-10-26'
-    two_days_ago = '2024-10-24'
-    headers = {'Authorization': API_KEY}
+    seven_days_ago = '2024-10-19'
+    headers = {'Authorization': f'Bearer {API_KEY}'}
     games_data = []
     page = 1
     while True:
         response = requests.get(
-            f'{BALLDONTLIE_URL}/games?start_date={two_days_ago}&end_date={today}&per_page=100&page={page}',
+            f'{BALLDONTLIE_URL}/games?start_date={seven_days_ago}&end_date={today}&per_page=100&page={page}',
             headers=headers
         )
         response.raise_for_status()
         data = response.json()
         print(f"API response for page {page}: {data.get('meta', {})}")
         games_data.extend(data['data'])
-        if not data['meta']['next_page']:
+        if not data['meta'].get('next_cursor'):
             break
         page += 1
         time.sleep(1)  # Respect API
@@ -68,14 +68,13 @@ try:
             'home_team_id': game['home_team']['id']
         } for game in games_data
     ])
-    target_game_ids = [gid for gid in games['id'].unique() if str(gid) not in existing_ids][:10]  # Skip duplicates, limit 10
+    target_game_ids = [str(gid) for gid in games['id'].unique() if str(gid) not in existing_ids][:10]  # Skip duplicates, limit 10
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    # Dynamic Fallback: Fetch last 7 days' games
+    # Dynamic Fallback: Fetch last 4 available games
     try:
-        seven_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=7)).strftime('%Y-%m-%d')
-        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date={seven_days_ago}&per_page=4', headers=headers)
+        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date=2024-10-22&per_page=4', headers=headers)
         response.raise_for_status()
         data = response.json()
         print(f"Dynamic fallback response: {data.get('meta', {})}")
@@ -89,7 +88,7 @@ except Exception as e:
                 'home_team_id': game['home_team']['id']
             } for game in games_data
         ])
-        target_game_ids = [gid for gid in games['id'].unique() if str(gid) not in existing_ids]
+        target_game_ids = [str(gid) for gid in games['id'].unique() if str(gid) not in existing_ids]
         print("Using dynamic fallback game list:", target_game_ids)
         if not target_game_ids:
             print("All fallback games already processed. Adding one new placeholder game.")
@@ -120,6 +119,11 @@ for game_id in target_game_ids:
             'tip_winner': 'Adebayo', 'tip_loser': 'Vucevic',
             'first_shooter': 'Butler', 'first_made': True, 'first_type': 'Layup', 'first_team': 'Miami Heat',
             'second_shooter': 'White', 'second_made': False, 'second_type': '3pt'
+        },
+        'default': {
+            'tip_winner': 'Unknown (API Failure)', 'tip_loser': 'Unknown',
+            'first_shooter': 'Unknown', 'first_made': False, 'first_type': 'Other', 'first_team': 'Unknown',
+            'second_shooter': 'Unknown', 'second_made': False, 'second_type': 'Other'
         }
     }
     for attempt in range(5):
