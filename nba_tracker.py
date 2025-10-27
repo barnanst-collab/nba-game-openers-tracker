@@ -5,10 +5,11 @@ import re
 import requests
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
+import os  # Add import os here
 
 # === CONFIG ===
 BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'
-API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Your paid-tier key
+API_KEY = os.environ.get('BALLDONTLIE_API_KEY')  # Replace hardcoded key with environment variable
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
