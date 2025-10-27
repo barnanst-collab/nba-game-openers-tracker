@@ -5,13 +5,18 @@ import re
 import requests
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
-import os  # Add import os here
+import os
 
 # === CONFIG ===
 BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'
-API_KEY = os.environ.get('BALLDONTLIE_API_KEY')  # Replace hardcoded key with environment variable
+API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Hardcoded temporarily to fix 401 error
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
+
+# Validate API key
+if not API_KEY:
+    print("Error: BALLDONTLIE_API_KEY is not set. Please configure it in GitHub Secrets or hardcode a valid key.")
+    exit()
 
 # === TEAM-SPECIFIC PLACEHOLDERS ===
 TEAM_PLACEHOLDERS = {
@@ -65,6 +70,7 @@ try:
     today = '2024-10-26'
     seven_days_ago = '2024-10-19'
     headers = {'Authorization': f'Bearer {API_KEY}'}
+    print(f"Using API key (first 4 chars): {API_KEY[:4]}...")  # Masked for logging
     games_data = []
     page = 1
     while True:
