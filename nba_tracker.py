@@ -83,34 +83,34 @@ try:
         raise ValueError("No games found for the specified date range")
     games = pd.DataFrame([
         {
-            'id': game['id'],
+            'id': str(game['id']),
             'GAME_DATE': pd.to_datetime(game['date']).strftime('%Y-%m-%d'),
             'home_team': game['home_team']['name'],
             'visitor_team': game['visitor_team']['name'],
             'home_team_id': game['home_team']['id']
         } for game in games_data
     ])
-    target_game_ids = [str(gid) for gid in games['id'].unique() if str(gid) not in existing_ids][:10]  # Skip duplicates, limit 10
+    target_game_ids = [gid for gid in games['id'].unique() if gid not in existing_ids][:10]  # Skip duplicates, limit 10
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
-    # Dynamic Fallback: Fetch games from season start
+    # Dynamic Fallback: Fetch games from earlier in season
     try:
-        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date=2024-10-22&per_page=4', headers=headers)
+        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date=2024-10-17&end_date=2024-10-18&per_page=4', headers=headers)
         response.raise_for_status()
         data = response.json()
         print(f"Dynamic fallback response: {data.get('meta', {})}")
         games_data = data['data']
         games = pd.DataFrame([
             {
-                'id': game['id'],
+                'id': str(game['id']),
                 'GAME_DATE': pd.to_datetime(game['date']).strftime('%Y-%m-%d'),
                 'home_team': game['home_team']['name'],
                 'visitor_team': game['visitor_team']['name'],
                 'home_team_id': game['home_team']['id']
             } for game in games_data
         ])
-        target_game_ids = [str(gid) for gid in games['id'].unique() if str(gid) not in existing_ids]
+        target_game_ids = [gid for gid in games['id'].unique() if gid not in existing_ids]
         print("Using dynamic fallback game list:", target_game_ids)
         if not target_game_ids:
             print("All fallback games already processed. Adding one new placeholder game.")
@@ -152,7 +152,7 @@ for game_id in target_game_ids:
             'first_shooter': 'Butler', 'first_made': True, 'first_type': 'Layup', 'first_team': 'Miami Heat',
             'second_shooter': 'White', 'second_made': False, 'second_type': '3pt'
         },
-        game_id: {
+        'default': {
             'tip_winner': home_placeholder['tip'], 'tip_loser': away_placeholder['tip'],
             'first_shooter': home_placeholder['shot'], 'first_made': True, 'first_type': 'Layup', 'first_team': home_team,
             'second_shooter': away_placeholder['shot'], 'second_made': False, 'second_type': '3pt'
@@ -261,7 +261,7 @@ for game_id in target_game_ids:
             else:
                 print(f"  Skipped {game_id} after 5 attempts")
                 # Add placeholder data
-                placeholder = placeholder_map.get(str(game_id), {
+                placeholder = placeholder_map.get('default', {
                     'tip_winner': home_placeholder['tip'], 'tip_loser': away_placeholder['tip'],
                     'first_shooter': home_placeholder['shot'], 'first_made': True, 'first_type': 'Layup', 'first_team': home_team,
                     'second_shooter': away_placeholder['shot'], 'second_made': False, 'second_type': '3pt'
