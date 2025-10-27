@@ -9,13 +9,13 @@ import os
 
 # === CONFIG ===
 BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'
-API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Hardcoded temporarily to fix 401 error
+API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Hardcoded temporarily
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
 # Validate API key
 if not API_KEY:
-    print("Error: BALLDONTLIE_API_KEY is not set. Please configure it in GitHub Secrets or hardcode a valid key.")
+    print("Error: API_KEY is not set. Please configure it in the script or use environment variable.")
     exit()
 
 # === TEAM-SPECIFIC PLACEHOLDERS ===
@@ -38,6 +38,28 @@ TEAM_PLACEHOLDERS = {
     'Oklahoma City Thunder': {'tip': 'Holmgren', 'shot': 'Gilgeous-Alexander'},
     'Denver Nuggets': {'tip': 'Jokic', 'shot': 'Murray'},
     'Golden State Warriors': {'tip': 'Jackson-Davis', 'shot': 'Curry'}
+}
+
+# Team name normalization
+TEAM_NAME_MAP = {
+    'Celtics': 'Boston Celtics',
+    'Raptors': 'Toronto Raptors',
+    'Lakers': 'Los Angeles Lakers',
+    'Timberwolves': 'Minnesota Timberwolves',
+    '76ers': 'Philadelphia 76ers',
+    'Bucks': 'Milwaukee Bucks',
+    'Suns': 'Phoenix Suns',
+    'Clippers': 'Los Angeles Clippers',
+    'Heat': 'Miami Heat',
+    'Bulls': 'Chicago Bulls',
+    'Knicks': 'New York Knicks',
+    'Cavaliers': 'Cleveland Cavaliers',
+    'Spurs': 'San Antonio Spurs',
+    'Mavericks': 'Dallas Mavericks',
+    'Pacers': 'Indiana Pacers',
+    'Thunder': 'Oklahoma City Thunder',
+    'Nuggets': 'Denver Nuggets',
+    'Warriors': 'Golden State Warriors'
 }
 
 # === INITIALIZE GOOGLE SHEETS ===
@@ -70,7 +92,7 @@ try:
     today = '2024-10-26'
     seven_days_ago = '2024-10-19'
     headers = {'Authorization': f'Bearer {API_KEY}'}
-    print(f"Using API key (first 4 chars): {API_KEY[:4]}...")  # Masked for logging
+    print(f"Using API key (first 4 chars): {API_KEY[:4]}...")
     games_data = []
     page = 1
     while True:
@@ -92,8 +114,8 @@ try:
         {
             'id': str(game['id']),
             'GAME_DATE': pd.to_datetime(game['date']).strftime('%Y-%m-%d'),
-            'home_team': game['home_team']['name'],
-            'visitor_team': game['visitor_team']['name'],
+            'home_team': TEAM_NAME_MAP.get(game['home_team']['name'], game['home_team']['name']),
+            'visitor_team': TEAM_NAME_MAP.get(game['visitor_team']['name'], game['visitor_team']['name']),
             'home_team_id': game['home_team']['id']
         } for game in games_data
     ])
@@ -103,7 +125,7 @@ except Exception as e:
     print(f"Failed to fetch games: {str(e)}")
     # Dynamic Fallback: Fetch games from earlier in season
     try:
-        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date=2024-10-17&end_date=2024-10-18&per_page=4', headers=headers)
+        response = requests.get(f'{BALLDONTLIE_URL}/games?start_date=2024-10-15&end_date=2024-10-16&per_page=4', headers=headers)
         response.raise_for_status()
         data = response.json()
         print(f"Dynamic fallback response: {data.get('meta', {})}")
@@ -112,8 +134,8 @@ except Exception as e:
             {
                 'id': str(game['id']),
                 'GAME_DATE': pd.to_datetime(game['date']).strftime('%Y-%m-%d'),
-                'home_team': game['home_team']['name'],
-                'visitor_team': game['visitor_team']['name'],
+                'home_team': TEAM_NAME_MAP.get(game['home_team']['name'], game['home_team']['name']),
+                'visitor_team': TEAM_NAME_MAP.get(game['visitor_team']['name'], game['visitor_team']['name']),
                 'home_team_id': game['home_team']['id']
             } for game in games_data
         ])
