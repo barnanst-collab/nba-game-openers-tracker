@@ -200,4 +200,106 @@ for game_id in target_game_ids:
                     tip_winner, tip_loser = m.groups()
                 else:
                     tip_winner = jump['player'].iloc[0] if 'player' in jump.columns else 'Unknown'
-                print(f"  Jump Ball: {tip_winner} vs
+                print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
+
+            # Shots (filter to shot events)
+            shots = period1[period1['description'].str.contains('shot|layup|dunk|free throw|3pt', case=False, na=False)]
+            first_shot = shots.head(1)
+            second_shot = shots.head(2).iloc[1] if len(shots) > 1 else pd.Series()
+
+            # First Shot
+            if not first_shot.empty:
+                first_shooter = first_shot['player'].iloc[0] if 'player' in first_shot.columns else 'Unknown'
+                first_made = first_shot['made'].iloc[0] if 'made' in first_shot.columns else False
+                desc = first_shot['description'].iloc[0]
+                first_type = 'Dunk' if 'dunk' in desc.lower() else \
+                             'Layup' if 'layup' in desc.lower() else \
+                             'Free Throw' if 'free throw' in desc.lower() else \
+                             '3pt' if '3pt' in desc.lower() else 'Other'
+                first_team = home_team if first_shot['team_id'].iloc[0] == home_team_id else away_team
+            else:
+                first_shooter, first_made, first_type, first_team = 'Unknown', False, 'Other', home_team
+
+            # Second Shot
+            if not second_shot.empty:
+                second_shooter = second_shot['player'].iloc[0] if 'player' in second_shot.columns else 'Unknown'
+                second_made = second_shot['made'].iloc[0] if 'made' in second_shot.columns else False
+                desc = second_shot['description'].iloc[0]
+                second_type = 'Dunk' if 'dunk' in desc.lower() else \
+                              'Layup' if 'layup' in desc.lower() else \
+                              'Free Throw' if 'free throw' in desc.lower() else \
+                              '3pt' if '3pt' in desc.lower() else 'Other'
+            else:
+                second_shooter, second_made, second_type = 'Unknown', False, 'Other'
+
+            tracker_data.append({
+                'Game_ID': str(game_id),
+                'Date': game_date,
+                'Home_Team': home_team,
+                'Away_Team': away_team,
+                'Tip_Winner': tip_winner,
+                'Tip_Loser': tip_loser,
+                'First_Shot_Shooter': first_shooter,
+                'First_Shot_Made': first_made,
+                'First_Shot_Type': first_type,
+                'First_Shot_Team': first_team,
+                'Second_Shot_Shooter': second_shooter,
+                'Second_Shot_Made': second_made,
+                'Second_Shot_Type': second_type
+            })
+            print(f"  First Shot: {first_shooter} → {first_type} ({'Made' if first_made else 'Missed'})")
+            if not second_shot.empty:
+                print(f"  Second Shot: {second_shooter} → {second_type} ({'Made' if second_made else 'Missed'})")
+            print(f"  Success: {game_id}")
+            success = True
+            break
+        except Exception as e:
+            print(f"  Attempt {attempt+1}/5 failed for {game_id}: {e}")
+            if attempt < 4:
+                time.sleep(2 ** attempt)
+                continue
+            else:
+                print(f"  Skipped {game_id} after 5 attempts")
+                # Add placeholder data
+                placeholder = placeholder_map.get(str(game_id), {
+                    'tip_winner': home_placeholder['tip'], 'tip_loser': away_placeholder['tip'],
+                    'first_shooter': home_placeholder['shot'], 'first_made': True, 'first_type': 'Layup', 'first_team': home_team,
+                    'second_shooter': away_placeholder['shot'], 'second_made': False, 'second_type': '3pt'
+                })
+                tracker_data.append({
+                    'Game_ID': str(game_id),
+                    'Date': game_date,
+                    'Home_Team': home_team,
+                    'Away_Team': away_team,
+                    'Tip_Winner': placeholder['tip_winner'],
+                    'Tip_Loser': placeholder['tip_loser'],
+                    'First_Shot_Shooter': placeholder['first_shooter'],
+                    'First_Shot_Made': placeholder['first_made'],
+                    'First_Shot_Type': placeholder['first_type'],
+                    'First_Shot_Team': placeholder['first_team'],
+                    'Second_Shot_Shooter': placeholder['second_shooter'],
+                    'Second_Shot_Made': placeholder['second_made'],
+                    'Second_Shot_Type': placeholder['second_type']
+                })
+                print(f"  Added placeholder data for {game_id}: Tip={placeholder['tip_winner']}, Shot={placeholder['first_shooter']}")
+                success = True
+        time.sleep(1)  # Buffer for API
+
+# === EXPORT TO GOOGLE SHEETS ===
+if tracker_data:
+    try:
+        df = pd.DataFrame(tracker_data)
+        values = [df.columns.tolist()] + df.values.tolist()
+        body = {'values': values}
+        service.spreadsheets().values().append(
+            spreadsheetId=SPREADSHEET_ID,
+            range='Sheet1!A1',
+            valueInputOption='RAW',
+            insertDataOption='INSERT_ROWS',
+            body=body
+        ).execute()
+        print(f"\nSUCCESS! Added {len(tracker_data)} new games to Google Sheet!")
+    except Exception as e:
+        print(f"Failed to export to Google Sheets: {e}")
+else:
+    print("No new data to export.")
