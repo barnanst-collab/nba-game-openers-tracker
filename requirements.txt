@@ -1,3 +1,4 @@
-nba_api
+requests
 google-api-python-client
 pandas
+packaging
