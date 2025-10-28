@@ -10,13 +10,13 @@ from datetime import datetime, timedelta
 
 # === CONFIG ===
 BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'
-API_KEY = os.environ.get('BALLDONTLIE_API_KEY') or '9d36588f-9403-4d3e-8654-8357d10537d7'  # Fallback to hardcoded
+API_KEY = os.environ.get('BALLDONTLIE_API_KEY') or '9d36588f-9403-4d3e-8654-8357d10537d7'
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
 # Validate API key
 if not API_KEY:
-    print("ERROR: BALLDONTLIE_API_KEY is missing. Set it in GitHub Secrets.")
+    print("ERROR: BALLDONTLIE_API_KEY is missing.")
     exit()
 
 # === DYNAMIC DATES ===
@@ -24,11 +24,11 @@ today = datetime.now().strftime('%Y-%m-%d')
 seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
 print(f"Fetching games from {seven_days_ago} to {today}")
 
-# Fallback dates (known to have PBP data)
+# Fallback dates (2024–25 season, known to have PBP)
 FALLBACK_TODAY = '2024-10-23'
 FALLBACK_SEVEN_DAYS_AGO = '2024-10-22'
 
-# === TEAM-SPECIFIC PLACEHOLDERS ===
+# === TEAM PLACEHOLDERS ===
 TEAM_PLACEHOLDERS = {
     'Boston Celtics': {'tip': 'Tatum', 'shot': 'Brown'},
     'Toronto Raptors': {'tip': 'Poeltl', 'shot': 'Barnes'},
@@ -62,97 +62,75 @@ TEAM_PLACEHOLDERS = {
     'Houston Rockets': {'tip': 'Sengun', 'shot': 'Green'}
 }
 
-# Normalize team names from API
-TEAM_NAME_MAP = {
-    'Celtics': 'Boston Celtics',
-    'Raptors': 'Toronto Raptors',
-    'Lakers': 'Los Angeles Lakers',
-    'Timberwolves': 'Minnesota Timberwolves',
-    '76ers': 'Philadelphia 76ers',
-    'Bucks': 'Milwaukee Bucks',
-    'Suns': 'Phoenix Suns',
-    'Clippers': 'Los Angeles Clippers',
-    'Heat': 'Miami Heat',
-    'Bulls': 'Chicago Bulls',
-    'Knicks': 'New York Knicks',
-    'Cavaliers': 'Cleveland Cavaliers',
-    'Spurs': 'San Antonio Spurs',
-    'Mavericks': 'Dallas Mavericks',
-    'Pacers': 'Indiana Pacers',
-    'Thunder': 'Oklahoma City Thunder',
-    'Nuggets': 'Denver Nuggets',
-    'Warriors': 'Golden State Warriors',
-    'Trail Blazers': 'Portland Trail Blazers',
-    'Kings': 'Sacramento Kings',
-    'Magic': 'Orlando Magic',
-    'Hawks': 'Atlanta Hawks',
-    'Hornets': 'Charlotte Hornets',
-    'Pistons': 'Detroit Pistons',
-    'Wizards': 'Washington Wizards',
-    'Nets': 'Brooklyn Nets',
-    'Grizzlies': 'Memphis Grizzlies',
-    'Pelicans': 'New Orleans Pelicans',
-    'Jazz': 'Utah Jazz',
-    'Rockets': 'Houston Rockets'
-}
+TEAM_NAME_MAP = {v.split()[-1]: k for k, v in TEAM_PLACEHOLDERS.items()}
+TEAM_NAME_MAP.update({
+    'Celtics': 'Boston Celtics', 'Raptors': 'Toronto Raptors', 'Lakers': 'Los Angeles Lakers',
+    'Timberwolves': 'Minnesota Timberwolves', '76ers': 'Philadelphia 76ers', 'Bucks': 'Milwaukee Bucks',
+    'Suns': 'Phoenix Suns', 'Clippers': 'Los Angeles Clippers', 'Heat': 'Miami Heat', 'Bulls': 'Chicago Bulls',
+    'Knicks': 'New York Knicks', 'Cavaliers': 'Cleveland Cavaliers', 'Spurs': 'San Antonio Spurs',
+    'Mavericks': 'Dallas Mavericks', 'Pacers': 'Indiana Pacers', 'Thunder': 'Oklahoma City Thunder',
+    'Nuggets': 'Denver Nuggets', 'Warriors': 'Golden State Warriors', 'Trail Blazers': 'Portland Trail Blazers',
+    'Kings': 'Sacramento Kings', 'Magic': 'Orlando Magic', 'Hawks': 'Atlanta Hawks', 'Hornets': 'Charlotte Hornets',
+    'Pistons': 'Detroit Pistons', 'Wizards': 'Washington Wizards', 'Nets': 'Brooklyn Nets',
+    'Grizzlies': 'Memphis Grizzlies', 'Pelicans': 'New Orleans Pelicans', 'Jazz': 'Utah Jazz', 'Rockets': 'Houston Rockets'
+})
 
 # === INITIALIZE GOOGLE SHEETS ===
 print("Initializing Google Sheets...")
 try:
-    creds = Credentials.from_service_account_file(
-        CREDENTIALS_FILE,
-        scopes=['https://www.googleapis.com/auth/spreadsheets']
-    )
+    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=['https://www.googleapis.com/auth/spreadsheets'])
     service = build('sheets', 'v4', credentials=creds)
 except Exception as e:
     print(f"Failed to initialize Google Sheets: {e}")
     exit()
 
-# === CHECK FOR EXISTING GAMES ===
-print("Checking for existing games in Google Sheet...")
+# === CHECK EXISTING GAMES ===
+print("Checking for existing games...")
 try:
-    existing_games = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range='Sheet1!A:A'
-    ).execute().get('values', [])
+    existing_games = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_ID, range='Sheet1!A:A').execute().get('values', [])
     existing_ids = [row[0] for row in existing_games if row and row[0] != 'Game_ID']
     print(f"Found {len(existing_ids)} existing games.")
 except Exception as e:
     print(f"Failed to read existing games: {e}")
     existing_ids = []
 
-# === FETCH GAMES ===
+# === FETCH GAMES FUNCTION ===
 def fetch_games(start_date, end_date):
     headers = {'Authorization': f'Bearer {API_KEY}'}
     games_data = []
     page = 1
     while True:
         url = f'{BALLDONTLIE_URL}/games?start_date={start_date}&end_date={end_date}&per_page=100&page={page}'
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            print(f"API error {response.status_code}: {response.text}")
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code != 200:
+                print(f"API error {response.status_code}: {response.text}")
+                return None
+            data = response.json()
+            print(f"  Page {page}: {len(data['data'])} games")
+            games_data.extend(data['data'])
+            if not data['meta'].get('next_cursor'):
+                break
+            page += 1
+            time.sleep(1)
+        except Exception as e:
+            print(f"Request failed: {e}")
             return None
-        data = response.json()
-        print(f"  Page {page}: {len(data['data'])} games, meta: {data.get('meta', {})}")
-        games_data.extend(data['data'])
-        if not data['meta'].get('next_cursor'):
-            break
-        page += 1
-        time.sleep(1)
     return games_data
 
-# Try recent games
+# === TRY RECENT GAMES ===
 print(f"Fetching recent games ({seven_days_ago} to {today})...")
 games_data = fetch_games(seven_days_ago, today)
 
-# Fallback if no games or PBP fails
-if not games_data or len([g for g in games_data if str(g['id']) not in existing_ids]) == 0:
-    print("No new recent games. Trying fallback (Oct 22–23, 2024)...")
+# === FALLBACK IF NEEDED ===
+if not games_data or len(games_data) == 0:
+    print("No recent games. Trying fallback (2024-10-22 to 2024-10-23)...")
     games_data = fetch_games(FALLBACK_SEVEN_DAYS_AGO, FALLBACK_TODAY)
 
 if not games_data:
     print("No games found. Using static fallback.")
     games = pd.DataFrame([{
-        'id': '99999999', 'date': '2024-10-25', 'home_team': {'name': 'Heat'}, 'visitor_team': {'name': 'Bulls'}, 'home_team_id': 1610612748
+        'id': '99999999', 'date': '2024-10-25', 'home_team': {'name': 'Miami Heat'}, 'visitor_team': {'name': 'Chicago Bulls'}, 'home_team_id': 1610612748
     }])
 else:
     games = pd.DataFrame([
@@ -165,24 +143,34 @@ else:
         } for game in games_data
     ])
 
-target_game_ids = [gid for gid in games['id'].unique() if gid not in existing_ids][:10]
-print(f"Target games: {target_game_ids}")
+# === FILTER COMPLETED GAMES ONLY ===
+now = datetime.now()
+valid_games = []
+for _, game in games.iterrows():
+    game_end = pd.to_datetime(game['GAME_DATE']) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+    if game_end < now and game['id'] not in existing_ids:
+        valid_games.append(game)
 
+target_games = valid_games[:10]
+target_game_ids = [g['id'] for g in target_games]
+
+print(f"Found {len(target_game_ids)} completed new games: {target_game_ids}")
 if not target_game_ids:
-    print("No new games to process.")
+    print("No completed games to process. Exiting.")
     exit()
 
 # === PROCESS GAMES ===
 tracker_data = []
 headers = {'Authorization': f'Bearer {API_KEY}'}
 
-for game_id in target_game_ids:
-    print(f"\nProcessing Game ID: {game_id}")
-    game_row = games[games['id'] == game_id].iloc[0]
-    home_team = game_row['home_team']
-    away_team = game_row['visitor_team']
-    game_date = game_row['GAME_DATE']
-    home_team_id = game_row['home_team_id']
+for game in target_games:
+    game_id = game['id']
+    print(f"\nProcessing Game ID: {game_id} | {game['visitor_team']} @ {game['home_team']} | {game['GAME_DATE']}")
+    
+    home_team = game['home_team']
+    away_team = game['visitor_team']
+    home_team_id = game['home_team_id']
+    game_date = game['GAME_DATE']
 
     home_ph = TEAM_PLACEHOLDERS.get(home_team, {'tip': 'Unknown', 'shot': 'Unknown'})
     away_ph = TEAM_PLACEHOLDERS.get(away_team, {'tip': 'Unknown', 'shot': 'Unknown'})
@@ -195,7 +183,7 @@ for game_id in target_game_ids:
             while True:
                 resp = requests.get(
                     f'{BALLDONTLIE_URL}/plays?game_ids[]={game_id}&per_page=100&page={page}',
-                    headers=headers
+                    headers=headers, timeout=10
                 )
                 if resp.status_code == 404:
                     print(f"  404: No PBP data for {game_id}")
@@ -249,18 +237,11 @@ for game_id in target_game_ids:
             second_shooter, second_made, second_type, _ = get_shot_info(second_shot)
 
             tracker_data.append({
-                'Game_ID': game_id,
-                'Date': game_date,
-                'Home_Team': home_team,
-                'Away_Team': away_team,
-                'Tip_Winner': tip_winner,
-                'Tip_Loser': tip_loser,
-                'First_Shot_Shooter': first_shooter,
-                'First_Shot_Made': first_made,
-                'First_Shot_Type': first_type,
-                'First_Shot_Team': first_team,
-                'Second_Shot_Shooter': second_shooter,
-                'Second_Shot_Made': second_made,
+                'Game_ID': game_id, 'Date': game_date, 'Home_Team': home_team, 'Away_Team': away_team,
+                'Tip_Winner': tip_winner, 'Tip_Loser': tip_loser,
+                'First_Shot_Shooter': first_shooter, 'First_Shot_Made': first_made,
+                'First_Shot_Type': first_type, 'First_Shot_Team': first_team,
+                'Second_Shot_Shooter': second_shooter, 'Second_Shot_Made': second_made,
                 'Second_Shot_Type': second_type
             })
             print(f"  First Shot: {first_shooter} → {first_type} ({'Made' if first_made else 'Missed'})")
@@ -273,18 +254,18 @@ for game_id in target_game_ids:
                 time.sleep(2 ** attempt)
             else:
                 print(f"  Using placeholder for {game_id}")
-                placeholder = {
+                ph = {
                     'tip_winner': home_ph['tip'], 'tip_loser': away_ph['tip'],
                     'first_shooter': home_ph['shot'], 'first_made': True, 'first_type': 'Layup', 'first_team': home_team,
                     'second_shooter': away_ph['shot'], 'second_made': False, 'second_type': '3pt'
                 }
                 tracker_data.append({
                     'Game_ID': game_id, 'Date': game_date, 'Home_Team': home_team, 'Away_Team': away_team,
-                    'Tip_Winner': placeholder['tip_winner'], 'Tip_Loser': placeholder['tip_loser'],
-                    'First_Shot_Shooter': placeholder['first_shooter'], 'First_Shot_Made': placeholder['first_made'],
-                    'First_Shot_Type': placeholder['first_type'], 'First_Shot_Team': placeholder['first_team'],
-                    'Second_Shot_Shooter': placeholder['second_shooter'], 'Second_Shot_Made': placeholder['second_made'],
-                    'Second_Shot_Type': placeholder['second_type']
+                    'Tip_Winner': ph['tip_winner'], 'Tip_Loser': ph['tip_loser'],
+                    'First_Shot_Shooter': ph['first_shooter'], 'First_Shot_Made': ph['first_made'],
+                    'First_Shot_Type': ph['first_type'], 'First_Shot_Team': ph['first_team'],
+                    'Second_Shot_Shooter': ph['second_shooter'], 'Second_Shot_Made': ph['second_made'],
+                    'Second_Shot_Type': ph['second_type']
                 })
                 print(f"  Placeholder: {home_ph['tip']} vs {away_ph['tip']}, {home_ph['shot']} → Layup")
                 success = True
