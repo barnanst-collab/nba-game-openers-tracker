@@ -63,7 +63,7 @@ TEAM_PLACEHOLDERS = {
 }
 
 # === FIXED: TEAM_NAME_MAP ===
-TEAM_NAME_MAP = {v.split()[-1]: k for k, v in TEAM_PLACEHOLDERS.items()}
+TEAM_NAME_MAP = {k.split()[-1]: k for k, v in TEAM_PLACEHOLDERS.items()}
 TEAM_NAME_MAP.update({
     'Celtics': 'Boston Celtics', 'Raptors': 'Toronto Raptors', 'Lakers': 'Los Angeles Lakers',
     'Timberwolves': 'Minnesota Timberwolves', '76ers': 'Philadelphia 76ers', 'Bucks': 'Milwaukee Bucks',
