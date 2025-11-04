@@ -2,4 +2,3 @@ requests
 google-api-python-client
 pandas
 packaging
-sportsdataio
