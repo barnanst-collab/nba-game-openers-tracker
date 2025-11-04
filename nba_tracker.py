@@ -70,10 +70,10 @@ except Exception as e:
     print(f"Failed to read existing games: {e}")
     existing_ids = []
 
-# === FETCH GAMES ===
-print("Fetching games...")
+# === FORCE 2024-25 SEASON FOR TESTING (REAL PBP DATA) ===
+print("Using 2024-25 season for testing (PBP data available)...")
 try:
-    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/{seven_days_ago}'
+    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/2024-10-23'
     response = requests.get(games_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
     response.raise_for_status()
     games = response.json()
@@ -88,15 +88,13 @@ try:
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {e}")
-    # Fallback: Hardcoded 2024-25 games
+    # Fallback: Hardcoded
     games_df = pd.DataFrame([
         {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers'},
-        {'id': '0022400002', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks'},
-        {'id': '0022400003', 'GAME_DATE': '2024-10-23', 'home_team': 'Indiana Pacers', 'visitor_team': 'Oklahoma City Thunder'},
-        {'id': '0022400004', 'GAME_DATE': '2024-10-23', 'home_team': 'Denver Nuggets', 'visitor_team': 'Golden State Warriors'}
+        {'id': '0022400002', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks'}
     ])
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
-    print("Using fallback games:", target_game_ids)
+    print("Using hardcoded fallback:", target_game_ids)
 
 if not target_game_ids:
     print("No new games to process.")
