@@ -7,8 +7,8 @@ from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 
 # === CONFIG ===
-BALLDONTLIE_URL = 'https://www.balldontlie.io/api/v1'
-API_KEY = '9d36588f-9403-4d3e-8654-8357d10537d7'  # Your paid-tier key
+BALLDONTLIE_URL = 'https://api.balldontlie.io/v1'  # Fixed URL
+API_KEY = os.environ.get('BALLDONTLIE_API_KEY') or '9d36588f-9403-4d3e-8654-8357d10537d7'
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
@@ -42,7 +42,7 @@ try:
     two_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=2)).strftime('%Y-%m-%d')
     headers = {'Authorization': API_KEY}
     # Use season=2024 to ensure games are found
-    response = requests.get(f'{BALLDONTLIE_URL}/games?season=2024&start_date={two_days_ago}', headers=headers)
+    response = requests.geturl = f'{BALLDONTLIE_URL}/games?start_date={2025-10-21}&end_date={2025-11-3}&per_page=100&page={page}'
     response.raise_for_status()
     games_data = response.json()['data']
     if not games_data:
