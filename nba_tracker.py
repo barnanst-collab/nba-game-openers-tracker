@@ -1,25 +1,23 @@
-# nba_tracker.py — NBA Game Openers Tracker (SportsDataIO)
+# nba_tracker.py — NBA Game Openers Tracker (SportsDataIO REST API)
 import pandas as pd
 import time
 import re
-from sportsdataio import NBAClient  # Official SDK
+import requests
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 import os
 from datetime import datetime, timedelta
 
 # === CONFIG ===
-API_KEY = os.environ.get('SPORTSDATAIO_API_KEY') or 'your_key_here'  # Your SportsDataIO key
+SPORTSDATAIO_URL = 'https://api.sportsdata.io/v3/nba'
+API_KEY = os.environ.get('SPORTSDATAIO_API_KEY') or 'your_key_here'  # Add to GitHub Secrets
 SPREADSHEET_ID = '1uNH3tko9hJkgD_JVACeVQ0BwS-Q_8qH5HT0FHEwvQIY'
 CREDENTIALS_FILE = 'credentials.json'
 
 # Validate API key
 if not API_KEY or API_KEY == 'your_key_here':
-    print("ERROR: SPORTSDATAIO_API_KEY is missing. Get it from sportsdata.io.")
+    print("ERROR: SPORTSDATAIO_API_KEY is missing. Get it from sportsdata.io free trial.")
     exit()
-
-# Initialize SportsDataIO client
-client = NBAClient(API_KEY, 'nba')
 
 # === DYNAMIC DATES ===
 today = datetime.now().strftime('%Y-%m-%d')
@@ -75,7 +73,10 @@ except Exception as e:
 # === FETCH GAMES ===
 print("Fetching games...")
 try:
-    games = client.get_games_by_date(seven_days_ago)
+    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/{seven_days_ago}'
+    response = requests.get(games_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
+    response.raise_for_status()
+    games = response.json()
     if not games:
         raise ValueError("No games found")
     games_df = pd.DataFrame(games)
@@ -87,7 +88,7 @@ try:
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {e}")
-    # Fallback: Hardcoded 2024-25 games with PBP
+    # Fallback: Hardcoded 2024-25 games
     games_df = pd.DataFrame([
         {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers'},
         {'id': '0022400002', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks'},
@@ -118,7 +119,10 @@ for game_id in target_game_ids:
     for attempt in range(5):
         try:
             # Fetch PBP
-            pbp = client.get_play_by_play(game_id)
+            pbp_url = f'{SPORTSDATAIO_URL}/pbp/json/PlayByPlay/{game_id}'
+            response = requests.get(pbp_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
+            response.raise_for_status()
+            pbp = response.json()
             if not pbp:
                 print(f"  No PBP data for {game_id}")
                 break
@@ -136,7 +140,7 @@ for game_id in target_game_ids:
                 print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
 
             # First/Second Shot (field goal attempts)
-            shots = period1[period1['EventType'].isin([1, 3])]  # Made/missed FG
+            shots = period1[period1['EventType'].isin([1, 3])]  # Made/Missed FG
             first_shot = shots.head(1)
             second_shot = shots.head(2).iloc[1] if len(shots) > 1 else pd.DataFrame()
 
