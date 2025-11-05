@@ -90,7 +90,7 @@ for attempt in range(3):
             print("  Using empty existing_ids (proceeding without duplicate check).")
             existing_ids = []
 
-# === FETCH LIVE 2025-26 GAMES ===
+# === FETCH LIVE 2025-26 GAMES (ONLY FINAL) ===
 print("Fetching live 2025-26 games...")
 try:
     games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/{seven_days_ago}'
@@ -107,13 +107,15 @@ try:
     games_df['id'] = games_df['GameID'].astype(str)
     games_df['home_team_id'] = games_df['HomeTeamID']
 
-    target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
-    print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
+    # === ONLY PROCESS COMPLETED GAMES ===
+    completed_games = games_df[games_df['Status'] == 'Final']
+    target_game_ids = [gid for gid in completed_games['id'].unique() if gid not in existing_ids][:10]
+    print(f"Found {len(target_game_ids)} COMPLETED new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {e}")
     print("Using fallback...")
     games_df = pd.DataFrame([
-        {'id': '0022500001', 'GAME_DATE': '2025-10-28', 'home_team': 'Miami Heat', 'visitor_team': 'Chicago Bulls', 'home_team_id': 1610612748},
+        {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers', 'home_team_id': 1610612752, 'Status': 'Final'},
     ])
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
