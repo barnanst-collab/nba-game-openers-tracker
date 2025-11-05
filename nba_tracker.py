@@ -90,35 +90,37 @@ for attempt in range(3):
             print("  Using empty existing_ids (proceeding without duplicate check).")
             existing_ids = []
 
-# === FETCH LIVE 2025-26 GAMES (ONLY FINAL) ===
-print("Fetching live 2025-26 games...")
-try:
-    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/{seven_days_ago}'
-    response = requests.get(games_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
-    response.raise_for_status()
-    games = response.json()
-    if not games:
-        raise ValueError("No games found")
-    
-    games_df = pd.DataFrame(games)
-    games_df['GAME_DATE'] = pd.to_datetime(games_df['DateTime']).dt.strftime('%Y-%m-%d')
-    games_df['home_team'] = games_df['HomeTeam']
-    games_df['visitor_team'] = games_df['AwayTeam']
-    games_df['id'] = games_df['GameID'].astype(str)
-    games_df['home_team_id'] = games_df['HomeTeamID']
+# === FETCH 2025-26 SEASON (FIRST 109 GAMES) ===
+print("Fetching first 109 games of 2025-26 season...")
+season_start = '2025-10-21'
+today = datetime.now().strftime('%Y-%m-%d')
+dates = pd.date_range(start=season_start, end=today, freq='D').strftime('%Y-%m-%d').tolist()
+games_df = pd.DataFrame()
 
-    # === ONLY PROCESS COMPLETED GAMES ===
-    completed_games = games_df[games_df['Status'] == 'Final']
-    target_game_ids = [gid for gid in completed_games['id'].unique() if gid not in existing_ids][:10]
-    print(f"Found {len(target_game_ids)} COMPLETED new games: {target_game_ids}")
-except Exception as e:
-    print(f"Failed to fetch games: {e}")
-    print("Using fallback...")
-    games_df = pd.DataFrame([
-        {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers', 'home_team_id': 1610612752, 'Status': 'Final'},
-    ])
-    target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
-    print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
+for date in dates:
+    try:
+        games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/{date}'
+        response = requests.get(games_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
+        response.raise_for_status()
+        games = response.json()
+        if games:
+            date_df = pd.DataFrame(games)
+            date_df['GAME_DATE'] = pd.to_datetime(date_df['DateTime']).dt.strftime('%Y-%m-%d')
+            date_df['home_team'] = date_df['HomeTeam']
+            date_df['visitor_team'] = date_df['AwayTeam']
+            date_df['id'] = date_df['GameID'].astype(str)
+            date_df['home_team_id'] = date_df['HomeTeamID']
+            games_df = pd.concat([games_df, date_df], ignore_index=True)
+        time.sleep(1)  # Rate limit buffer
+    except Exception as e:
+        print(f"Failed for date {date}: {e}")
+        continue
+
+# === PROCESS ONLY COMPLETED GAMES ===
+completed_games = games_df[games_df['Status'] == 'Final']
+target_game_ids = [gid for gid in completed_games['id'].unique() if gid not in existing_ids][:109]  # Limit to first 109
+print(f"Found {len(target_game_ids)} completed games: {target_game_ids[:5]}...")
+
 except Exception as e:
     print(f"Failed to fetch games: {e}")
     # Hardcoded fallback
