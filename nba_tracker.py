@@ -43,7 +43,19 @@ TEAM_PLACEHOLDERS = {
     'Indiana Pacers': {'tip': 'Turner', 'shot': 'Haliburton'},
     'Oklahoma City Thunder': {'tip': 'Holmgren', 'shot': 'Gilgeous-Alexander'},
     'Denver Nuggets': {'tip': 'Jokic', 'shot': 'Murray'},
-    'Golden State Warriors': {'tip': 'Jackson-Davis', 'shot': 'Curry'}
+    'Golden State Warriors': {'tip': 'Jackson-Davis', 'shot': 'Curry'},
+    'Portland Trail Blazers': {'tip': 'Ayton', 'shot': 'Simons'},
+    'Sacramento Kings': {'tip': 'Sabonis', 'shot': 'Fox'},
+    'Orlando Magic': {'tip': 'Wagner', 'shot': 'Banchero'},
+    'Atlanta Hawks': {'tip': 'Capela', 'shot': 'Young'},
+    'Charlotte Hornets': {'tip': 'Williams', 'shot': 'Ball'},
+    'Detroit Pistons': {'tip': 'Durant', 'shot': 'Cunningham'},
+    'Washington Wizards': {'tip': 'Valanciunas', 'shot': 'Poole'},
+    'Brooklyn Nets': {'tip': 'Claxton', 'shot': 'Thomas'},
+    'Memphis Grizzlies': {'tip': 'Jackson Jr.', 'shot': 'Morant'},
+    'New Orleans Pelicans': {'tip': 'Valanciunas', 'shot': 'Williamson'},
+    'Utah Jazz': {'tip': 'Kessler', 'shot': 'Markkanen'},
+    'Houston Rockets': {'tip': 'Sengun', 'shot': 'Green'}
 }
 
 # === INITIALIZE GOOGLE SHEETS ===
@@ -58,17 +70,25 @@ except Exception as e:
     print(f"Failed to initialize Google Sheets: {e}")
     exit()
 
-# === CHECK FOR EXISTING GAMES ===
+# === CHECK FOR EXISTING GAMES (with retry) ===
 print("Checking for existing games...")
-try:
-    existing_games = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range='Sheet1!A:A'
-    ).execute().get('values', [])
-    existing_ids = [row[0] for row in existing_games if row and row[0] != 'Game_ID']
-    print(f"Found {len(existing_ids)} existing games.")
-except Exception as e:
-    print(f"Failed to read existing games: {e}")
-    existing_ids = []
+existing_ids = []
+for attempt in range(3):
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID, range='Sheet1!A:A'
+        ).execute()
+        existing_games = result.get('values', [])
+        existing_ids = [row[0] for row in existing_games if row and row[0] != 'Game_ID']
+        print(f"Found {len(existing_ids)} existing games.")
+        break
+    except Exception as e:
+        print(f"  Attempt {attempt+1} failed: {e}")
+        if attempt < 2:
+            time.sleep(2)
+        else:
+            print("  Using empty existing_ids (proceeding without duplicate check).")
+            existing_ids = []
 
 # === FETCH REAL 2024-25 GAMES WITH PBP DATA ===
 print("Fetching real 2024-25 games with PBP data...")
@@ -86,7 +106,7 @@ try:
     games_df['home_team'] = games_df['HomeTeam']
     games_df['visitor_team'] = games_df['AwayTeam']
     games_df['id'] = games_df['GameID'].astype(str)
-    games_df['home_team_id'] = games_df['HomeTeamID']  # Add this
+    games_df['home_team_id'] = games_df['HomeTeamID']
 
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
@@ -99,16 +119,21 @@ except Exception as e:
     ])
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print("Using hardcoded fallback:", target_game_ids)
-    
+
+if not target_game_ids:
+    print("No new games to process.")
+    exit()
+
 # === PROCESS GAMES ===
 tracker_data = []
 for game_id in target_game_ids:
     print(f"\nProcessing {game_id}...")
     success = False
     game_row = games_df[games_df['id'] == game_id].iloc[0]
-    home_team = game_row['home_team_id']
+    home_team = game_row['home_team']
     away_team = game_row['visitor_team']
     game_date = game_row['GAME_DATE']
+    home_team_id = game_row.get('home_team_id', 0)
 
     # Team placeholders
     home_ph = TEAM_PLACEHOLDERS.get(home_team, {'tip': 'Unknown', 'shot': 'Unknown'})
@@ -121,14 +146,15 @@ for game_id in target_game_ids:
             response = requests.get(pbp_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
             response.raise_for_status()
             pbp = response.json()
-            if not pbp:
+            if not pbp or 'PlayByPlay' not in pbp:
                 print(f"  No PBP data for {game_id}")
                 break
-            plays = pd.DataFrame(pbp)
+
+            plays = pd.DataFrame(pbp['PlayByPlay'])
             period1 = plays[plays['Period'] == 1]
 
             # Tip-off (EVENTMSGTYPE = 10)
-            jump = period1[period1['EventType'] == 10].head(1)
+            jump = period1[period1['EventMsgType'] == 10].head(1)
             tip_winner = tip_loser = 'No Tip'
             if not jump.empty:
                 desc = jump['Description'].iloc[0]
@@ -138,27 +164,27 @@ for game_id in target_game_ids:
                 print(f"  Jump Ball: {tip_winner} vs {tip_loser}")
 
             # First/Second Shot (field goal attempts)
-            shots = period1[period1['EventType'].isin([1, 3])]  # Made/Missed FG
+            shots = period1[period1['EventMsgType'].isin([1, 2])]  # Made/Missed FG
             first_shot = shots.head(1)
             second_shot = shots.head(2).iloc[1] if len(shots) > 1 else pd.DataFrame()
 
             # First Shot
             if not first_shot.empty:
-                first_shooter = first_shot['PlayerName'].iloc[0]
-                first_made = first_shot['EventType'].iloc[0] == 1
+                first_shooter = first_shot['Person1Name'].iloc[0]
+                first_made = first_shot['EventMsgType'].iloc[0] == 1
                 desc = first_shot['Description'].iloc[0]
                 first_type = 'Dunk' if 'dunk' in desc.lower() else \
                              'Layup' if 'layup' in desc.lower() else \
                              'Free Throw' if 'free throw' in desc.lower() else \
                              '3pt' if '3pt' in desc.lower() else 'Other'
-                first_team = home_team if first_shot['TeamID'].iloc[0] == game_row['HomeTeamID'] else away_team
+                first_team = home_team if first_shot['TeamID'].iloc[0] == home_team_id else away_team
             else:
                 first_shooter, first_made, first_type, first_team = 'Unknown', False, 'Other', home_team
 
             # Second Shot
             if not second_shot.empty:
-                second_shooter = second_shot['PlayerName'].iloc[0]
-                second_made = second_shot['EventType'].iloc[0] == 1
+                second_shooter = second_shot['Person1Name'].iloc[0]
+                second_made = second_shot['EventMsgType'].iloc[0] == 1
                 desc = second_shot['Description'].iloc[0]
                 second_type = 'Dunk' if 'dunk' in desc.lower() else \
                               'Layup' if 'layup' in desc.lower() else \
@@ -182,7 +208,7 @@ for game_id in target_game_ids:
                 'Second_Shot_Made': second_made,
                 'Second_Shot_Type': second_type
             })
-            print(f"  First Shot: {first_shooter} → {first_type} ({'Made' if first_made else 'Missed'})")
+            print(f"  First Shot: {first_shooter} to {first_type} ({'Made' if first_made else 'Missed'})")
             success = True
             break
 
@@ -200,30 +226,36 @@ for game_id in target_game_ids:
                 tracker_data.append({
                     'Game_ID': game_id, 'Date': game_date, 'Home_Team': home_team, 'Away_Team': away_team,
                     'Tip_Winner': ph['tip_winner'], 'Tip_Loser': ph['tip_loser'],
-                    'First_Shot_Shooter': ph['first_shooter'], 'First_Shot_Made': ph['first_made'],
+                    'First_Shot_Shooter': ph['first_shooter'], '['First_Shot_Made']: ph['first_made'],
                     'First_Shot_Type': ph['first_type'], 'First_Shot_Team': ph['first_team'],
                     'Second_Shot_Shooter': ph['second_shooter'], 'Second_Shot_Made': ph['second_made'],
                     'Second_Shot_Type': ph['second_type']
                 })
-                print(f"  Placeholder: {home_ph['tip']} vs {away_ph['tip']}, {home_ph['shot']} → Layup")
+                print(f"  Placeholder: {home_ph['tip']} vs {away_ph['tip']}, {home_ph['shot']} to Layup")
                 success = True
         time.sleep(1)
 
-# === EXPORT TO GOOGLE SHEETS ===
+# === EXPORT TO GOOGLE SHEETS (with retry) ===
 if tracker_data:
-    try:
-        df = pd.DataFrame(tracker_data)
-        values = [df.columns.tolist()] + df.values.tolist()
-        body = {'values': values}
-        service.spreadsheets().values().append(
-            spreadsheetId=SPREADSHEET_ID,
-            range='Sheet1!A1',
-            valueInputOption='RAW',
-            insertDataOption='INSERT_ROWS',
-            body=body
-        ).execute()
-        print(f"\nSUCCESS! Added {len(tracker_data)} new games to Google Sheet!")
-    except Exception as e:
-        print(f"Failed to export: {e}")
+    for attempt in range(3):
+        try:
+            df = pd.DataFrame(tracker_data)
+            values = [df.columns.tolist()] + df.values.tolist()
+            body = {'values': values}
+            service.spreadsheets().values().append(
+                spreadsheetId=SPREADSHEET_ID,
+                range='Sheet1!A1',
+                valueInputOption='RAW',
+                insertDataOption='INSERT_ROWS',
+                body=body
+            ).execute()
+            print(f"\nSUCCESS! Added {len(tracker_data)} new games to Google Sheet!")
+            break
+        except Exception as e:
+            print(f"Export attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                print("Failed to export after 3 attempts.")
 else:
     print("No data to export.")
