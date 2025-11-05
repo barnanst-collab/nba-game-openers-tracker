@@ -143,7 +143,7 @@ for game_id in target_game_ids:
     for attempt in range(5):
         try:
             # Fetch PBP
-            pbp_url = f'{SPORTSDATAIO_URL}/pbp/json/PlayByPlay/{game_id}'
+            pbp_url = f'{SPORTSDATAIO_URL}/v3/nba/pbp/json/PlayByPlay/{game_id}'
             response = requests.get(pbp_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
             response.raise_for_status()
             pbp = response.json()
