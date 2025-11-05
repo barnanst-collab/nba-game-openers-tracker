@@ -90,11 +90,10 @@ for attempt in range(3):
             print("  Using empty existing_ids (proceeding without duplicate check).")
             existing_ids = []
 
-# === FETCH REAL 2024-25 GAMES WITH PBP DATA ===
-print("Fetching real 2024-25 games with PBP data...")
+# === FETCH LIVE 2025-26 GAMES ===
+print("Fetching live 2025-26 games...")
 try:
-    # Use a known date with PBP: 2024-10-22
-    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/2024-10-22'
+    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/{seven_days_ago}'
     response = requests.get(games_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
     response.raise_for_status()
     games = response.json()
@@ -108,6 +107,14 @@ try:
     games_df['id'] = games_df['GameID'].astype(str)
     games_df['home_team_id'] = games_df['HomeTeamID']
 
+    target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
+    print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
+except Exception as e:
+    print(f"Failed to fetch games: {e}")
+    print("Using fallback...")
+    games_df = pd.DataFrame([
+        {'id': '0022500001', 'GAME_DATE': '2025-10-28', 'home_team': 'Miami Heat', 'visitor_team': 'Chicago Bulls', 'home_team_id': 1610612748},
+    ])
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
