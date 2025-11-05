@@ -226,7 +226,7 @@ for game_id in target_game_ids:
                 tracker_data.append({
                     'Game_ID': game_id, 'Date': game_date, 'Home_Team': home_team, 'Away_Team': away_team,
                     'Tip_Winner': ph['tip_winner'], 'Tip_Loser': ph['tip_loser'],
-                    'First_Shot_Shooter': ph['first_shooter'], '['First_Shot_Made']: ph['first_made'],
+                    'First_Shot_Shooter': ph['first_shooter'], 'First_Shot_Made': ph['first_made'],
                     'First_Shot_Type': ph['first_type'], 'First_Shot_Team': ph['first_team'],
                     'Second_Shot_Shooter': ph['second_shooter'], 'Second_Shot_Made': ph['second_made'],
                     'Second_Shot_Type': ph['second_type']
