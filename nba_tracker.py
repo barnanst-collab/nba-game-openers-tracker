@@ -70,28 +70,32 @@ except Exception as e:
     print(f"Failed to read existing games: {e}")
     existing_ids = []
 
-# === FORCE 2024-25 SEASON FOR TESTING (REAL PBP DATA) ===
-print("Using 2024-25 season for testing (PBP data available)...")
+# === FETCH REAL 2024-25 GAMES WITH PBP DATA ===
+print("Fetching real 2024-25 games with PBP data...")
 try:
-    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/2024-10-23'
+    # Use a known date with PBP: 2024-10-22
+    games_url = f'{SPORTSDATAIO_URL}/scores/json/GamesByDate/2024-10-22'
     response = requests.get(games_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
     response.raise_for_status()
     games = response.json()
     if not games:
         raise ValueError("No games found")
+    
     games_df = pd.DataFrame(games)
     games_df['GAME_DATE'] = pd.to_datetime(games_df['DateTime']).dt.strftime('%Y-%m-%d')
     games_df['home_team'] = games_df['HomeTeam']
     games_df['visitor_team'] = games_df['AwayTeam']
     games_df['id'] = games_df['GameID'].astype(str)
+    games_df['home_team_id'] = games_df['HomeTeamID']  # Add this
+
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print(f"Found {len(target_game_ids)} new games: {target_game_ids}")
 except Exception as e:
     print(f"Failed to fetch games: {e}")
-    # Fallback: Hardcoded
+    # Hardcoded fallback
     games_df = pd.DataFrame([
-        {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers'},
-        {'id': '0022400002', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks'}
+        {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers', 'home_team_id': 1610612752},
+        {'id': '0022400002', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks', 'home_team_id': 1610612759}
     ])
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print("Using hardcoded fallback:", target_game_ids)
