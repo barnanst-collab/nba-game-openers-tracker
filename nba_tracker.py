@@ -90,7 +90,7 @@ for attempt in range(3):
             print("  Using empty existing_ids (proceeding without duplicate check).")
             existing_ids = []
 
-# === FETCH 2025-26 SEASON (FIRST 109 GAMES) ===
+# === FETCH FIRST 109 GAMES OF 2025-26 SEASON ===
 print("Fetching first 109 games of 2025-26 season...")
 season_start = '2025-10-21'
 today = datetime.now().strftime('%Y-%m-%d')
@@ -118,21 +118,11 @@ for date in dates:
 
 # === PROCESS ONLY COMPLETED GAMES ===
 completed_games = games_df[games_df['Status'] == 'Final']
-target_game_ids = [gid for gid in completed_games['id'].unique() if gid not in existing_ids][:109]  # Limit to first 109
-print(f"Found {len(target_game_ids)} completed games: {target_game_ids[:5]}...")
-
-except Exception as e:
-    print(f"Failed to fetch games: {e}")
-    # Hardcoded fallback
-    games_df = pd.DataFrame([
-        {'id': '0022400001', 'GAME_DATE': '2024-10-22', 'home_team': 'New York Knicks', 'visitor_team': 'Cleveland Cavaliers', 'home_team_id': 1610612752},
-        {'id': '0022400002', 'GAME_DATE': '2024-10-22', 'home_team': 'San Antonio Spurs', 'visitor_team': 'Dallas Mavericks', 'home_team_id': 1610612759}
-    ])
-    target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
-    print("Using hardcoded fallback:", target_game_ids)
+target_game_ids = [gid for gid in completed_games['id'].unique() if gid not in existing_ids][:109]
+print(f"Found {len(target_game_ids)} COMPLETED new games: {target_game_ids[:5]}...")
 
 if not target_game_ids:
-    print("No new games to process.")
+    print("No new completed games to process.")
     exit()
 
 # === PROCESS GAMES ===
@@ -157,14 +147,14 @@ for game_id in target_game_ids:
             response = requests.get(pbp_url, headers={'Ocp-Apim-Subscription-Key': API_KEY})
             response.raise_for_status()
             pbp = response.json()
-            if not pbp or 'PlayByPlay' not in pbp:
+            if not pbp or 'PlayByPlay' not in pbp or not pbp['PlayByPlay']:
                 print(f"  No PBP data for {game_id}")
                 break
 
             plays = pd.DataFrame(pbp['PlayByPlay'])
             period1 = plays[plays['Period'] == 1]
 
-            # Tip-off (EVENTMSGTYPE = 10)
+            # Tip-off (EventMsgType == 10)
             jump = period1[period1['EventMsgType'] == 10].head(1)
             tip_winner = tip_loser = 'No Tip'
             if not jump.empty:
