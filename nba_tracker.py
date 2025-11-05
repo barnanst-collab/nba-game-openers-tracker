@@ -99,11 +99,7 @@ except Exception as e:
     ])
     target_game_ids = [gid for gid in games_df['id'].unique() if gid not in existing_ids][:10]
     print("Using hardcoded fallback:", target_game_ids)
-
-if not target_game_ids:
-    print("No new games to process.")
-    exit()
-
+    
 # === PROCESS GAMES ===
 tracker_data = []
 for game_id in target_game_ids:
