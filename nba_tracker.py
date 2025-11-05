@@ -110,7 +110,7 @@ for game_id in target_game_ids:
     print(f"\nProcessing {game_id}...")
     success = False
     game_row = games_df[games_df['id'] == game_id].iloc[0]
-    home_team = game_row['home_team']
+    home_team = game_row['home_team_id']
     away_team = game_row['visitor_team']
     game_date = game_row['GAME_DATE']
 
